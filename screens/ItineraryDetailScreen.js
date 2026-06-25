@@ -4,11 +4,21 @@ import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextIn
 
 import ItineraryMapView from '../components/ItineraryMapView';
 import ScreenHeader from '../components/ScreenHeader';
+import WeatherCard from '../components/WeatherCard';
 import { buildTravelAssistantContext, getMockAssistantResponse } from '../services/aiTravelAssistantService';
 import { budgetCategories, calculateBudgetSummary, formatMoney, formatNumberInput, hydrateBudget, parseMoney } from '../services/budgetService';
 import { createChecklistItem, hydrateChecklist } from '../services/checklistService';
 import { getAlternativePlaces, getPlaceDetail } from '../services/mockPlaceService';
+import {
+  cancelAllPlanNotifications,
+  cancelScheduleNotification,
+  isNotificationSupported,
+  requestNotificationPermissions,
+  rescheduleEnabledNotifications,
+  scheduleItineraryItemNotification,
+} from '../services/notificationService';
 import { getTodayScheduleInfo } from '../services/todayScheduleService';
+import { getWeatherForTrip } from '../services/weatherService';
 
 function clonePlan(plan) {
   return JSON.parse(JSON.stringify(plan));
@@ -76,6 +86,8 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
   ]);
   const [budgetState, setBudgetState] = useState({ totalBudget: 0, items: {} });
   const [completedScheduleItems, setCompletedScheduleItems] = useState({});
+  const [notificationSettings, setNotificationSettings] = useState({});
+  const [weatherState, setWeatherState] = useState({ loading: true, data: null, error: null });
 
   useEffect(() => {
     const nextPlan = plan ? clonePlan(plan) : null;
@@ -86,6 +98,7 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
     setChecklistItems(nextPlan ? hydrateChecklist(nextPlan) : []);
     setBudgetState(nextPlan ? hydrateBudget(nextPlan) : { totalBudget: 0, items: {} });
     setCompletedScheduleItems(nextPlan?.completedScheduleItems || {});
+    setNotificationSettings(nextPlan?.notificationSettings || {});
     setEditingKey(null);
     setEditingDraft(null);
     setAddingDayIndex(null);
@@ -107,6 +120,43 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
     ]);
   }, [plan?.id]);
 
+  useEffect(() => {
+    if (!editablePlan) return undefined;
+
+    let mounted = true;
+    const destination = {
+      id: editablePlan.destinationId,
+      name: editablePlan.destination,
+      englishName: editablePlan.destinationEnglishName,
+      country: editablePlan.country,
+      weather: editablePlan.weather,
+    };
+
+    const loadWeather = async () => {
+      setWeatherState({ loading: true, data: null, error: null });
+      const data = await getWeatherForTrip({ destination, date: editablePlan.startDate });
+      if (mounted) {
+        setWeatherState({
+          loading: false,
+          data,
+          error: data.type === 'fallback' ? data.error : null,
+        });
+      }
+    };
+
+    loadWeather();
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    editablePlan?.id,
+    editablePlan?.destinationId,
+    editablePlan?.destination,
+    editablePlan?.destinationEnglishName,
+    editablePlan?.startDate,
+  ]);
+
   if (!editablePlan) {
     return (
       <View style={styles.screen}>
@@ -126,15 +176,53 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
     setEditingDraft(null);
   };
 
-  const saveEdit = (dayIndex, itemIndex) => {
-    setEditablePlan((current) => {
-      const nextPlan = clonePlan(current);
-      nextPlan.days[dayIndex].items[itemIndex] = {
-        ...nextPlan.days[dayIndex].items[itemIndex],
-        ...editingDraft,
-      };
-      return nextPlan;
+  const syncPlanSilently = (nextPlan) => {
+    setEditablePlan(nextPlan);
+    setNotificationSettings(nextPlan.notificationSettings || {});
+    if (onSyncPlan) {
+      onSyncPlan(nextPlan);
+    }
+  };
+
+  const resyncPlanScheduleNotifications = async (nextPlan) => {
+    const syncedPlan = await rescheduleEnabledNotifications(nextPlan);
+    syncPlanSilently(syncedPlan);
+    return syncedPlan;
+  };
+
+  const reindexNotificationSettingsAfterDelete = (settings, day, deletedItemIndex) => {
+    const nextSettings = {};
+
+    Object.entries(settings || {}).forEach(([key, setting]) => {
+      const [dayNumber, itemIndexText] = key.split('-');
+      const itemIndex = Number(itemIndexText);
+
+      if (String(dayNumber) !== String(day.day)) {
+        nextSettings[key] = setting;
+        return;
+      }
+
+      if (itemIndex < deletedItemIndex) {
+        nextSettings[key] = setting;
+        return;
+      }
+
+      if (itemIndex > deletedItemIndex) {
+        nextSettings[`${day.day}-${itemIndex - 1}`] = setting;
+      }
     });
+
+    return nextSettings;
+  };
+
+  const saveEdit = async (dayIndex, itemIndex) => {
+    const nextPlan = clonePlan(editablePlan);
+    nextPlan.days[dayIndex].items[itemIndex] = {
+      ...nextPlan.days[dayIndex].items[itemIndex],
+      ...editingDraft,
+    };
+
+    await resyncPlanScheduleNotifications(nextPlan);
     cancelEdit();
   };
 
@@ -143,12 +231,19 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
       title: '일정 삭제',
       message: '이 일정 항목을 삭제할까요?',
       confirmText: '삭제',
-      onConfirm: () => {
-        setEditablePlan((current) => {
-          const nextPlan = clonePlan(current);
-          nextPlan.days[dayIndex].items.splice(itemIndex, 1);
-          return nextPlan;
-        });
+      onConfirm: async () => {
+        const nextPlan = clonePlan(editablePlan);
+        const day = nextPlan.days[dayIndex];
+        const itemId = `${day.day}-${itemIndex}`;
+        const setting = notificationSettings[itemId];
+
+        if (setting?.notificationId) {
+          await cancelScheduleNotification(setting.notificationId);
+        }
+
+        day.items.splice(itemIndex, 1);
+        nextPlan.notificationSettings = reindexNotificationSettingsAfterDelete(notificationSettings, day, itemIndex);
+        await resyncPlanScheduleNotifications(nextPlan);
         cancelEdit();
       },
     });
@@ -166,17 +261,16 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
     setAddDraft(createEmptyItem());
   };
 
-  const saveAdd = (dayIndex) => {
-    setEditablePlan((current) => {
-      const nextPlan = clonePlan(current);
-      nextPlan.days[dayIndex].items.push({
-        ...addDraft,
-        time: addDraft.time || '15:00',
-        placeName: addDraft.placeName || '새 장소',
-        description: addDraft.description || '새 일정 설명',
-      });
-      return nextPlan;
+  const saveAdd = async (dayIndex) => {
+    const nextPlan = clonePlan(editablePlan);
+    nextPlan.days[dayIndex].items.push({
+      ...addDraft,
+      time: addDraft.time || '15:00',
+      placeName: addDraft.placeName || '새 장소',
+      description: addDraft.description || '새 일정 설명',
     });
+
+    await resyncPlanScheduleNotifications(nextPlan);
     cancelAdd();
   };
 
@@ -193,7 +287,10 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
       title: '전체 일정 삭제',
       message: '저장된 여행 일정을 전체 삭제할까요?',
       confirmText: '전체 삭제',
-      onConfirm: () => onDeletePlan(editablePlan.id),
+      onConfirm: async () => {
+        await cancelAllPlanNotifications(editablePlan);
+        onDeletePlan(editablePlan.id);
+      },
     });
   };
 
@@ -273,6 +370,73 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
     if (onSyncPlan) {
       onSyncPlan(nextPlan);
     }
+  };
+
+  const toggleScheduleNotification = async (day, item) => {
+    if (!isNotificationSupported()) {
+      Alert.alert('알림 안내', '웹에서는 알림 기능이 제한됩니다. 모바일 앱에서 사용할 수 있어요.');
+      return;
+    }
+
+    const itemId = item.id;
+    const currentSetting = notificationSettings[itemId] || {};
+
+    if (currentSetting.enabled) {
+      await cancelScheduleNotification(currentSetting.notificationId);
+      const nextSettings = {
+        ...notificationSettings,
+        [itemId]: {
+          ...currentSetting,
+          enabled: false,
+          notificationId: null,
+          scheduledAt: null,
+        },
+      };
+      const nextPlan = {
+        ...clonePlan(editablePlan),
+        notificationSettings: nextSettings,
+      };
+      syncPlanSilently(nextPlan);
+      return;
+    }
+
+    const permission = await requestNotificationPermissions();
+    if (!permission.granted) {
+      Alert.alert('알림 권한 필요', '일정 알림을 받으려면 모바일 기기에서 알림 권한을 허용해주세요.');
+      return;
+    }
+
+    const dayIndex = (editablePlan.days || []).findIndex((planDay) => planDay.day === day.day);
+    const result = await scheduleItineraryItemNotification({
+      plan: editablePlan,
+      dayIndex,
+      itemIndex: item.itemIndex,
+      item,
+      previousNotificationId: currentSetting.notificationId,
+    });
+
+    if (!result.scheduled) {
+      const message =
+        result.reason === 'past'
+          ? '이미 지난 일정이어서 알림을 예약할 수 없습니다.'
+          : '이 일정의 알림을 예약할 수 없습니다.';
+      Alert.alert('알림 예약 실패', message);
+      return;
+    }
+
+    const nextSettings = {
+      ...notificationSettings,
+      [itemId]: {
+        enabled: true,
+        notificationId: result.notificationId,
+        scheduledAt: result.scheduledAt,
+      },
+    };
+    const nextPlan = {
+      ...clonePlan(editablePlan),
+      notificationSettings: nextSettings,
+    };
+    syncPlanSilently(nextPlan);
   };
 
   const openPlaceDetail = (dayIndex, itemIndex, item) => {
@@ -603,10 +767,13 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
     );
   };
 
-  const renderTodayItemCard = (item, label, highlighted = false) => (
+  const renderTodayItemCard = (item, label, highlighted = false, sectionKey = label, day = null) => {
+    const notificationEnabled = Boolean(notificationSettings[item.id]?.enabled);
+
+    return (
     <Pressable
-      key={`${label}-${item.id}`}
-      testID={`today-item-${item.id}`}
+      key={`${sectionKey}-${item.id}`}
+      testID={`today-item-${sectionKey}-${item.id}`}
       style={[styles.todayItemCard, highlighted && styles.highlightTodayItem, item.completed && styles.completedTodayItem]}
       onPress={() => toggleTodayScheduleItem(item.id)}
     >
@@ -618,8 +785,23 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
         <Text style={[styles.todayPlaceName, item.completed && styles.completedText]}>{item.time} · {item.placeName}</Text>
         <Text style={[styles.todayDescription, item.completed && styles.completedText]}>{item.description}</Text>
       </View>
+      <Pressable
+        testID={`today-notification-toggle-${item.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={notificationEnabled ? '일정 알림 끄기' : '일정 알림 켜기'}
+        style={[styles.notificationToggle, notificationEnabled && styles.activeNotificationToggle]}
+        onPress={(event) => {
+          event?.stopPropagation?.();
+          if (day) {
+            toggleScheduleNotification(day, item);
+          }
+        }}
+      >
+        <Feather name={notificationEnabled ? 'bell' : 'bell-off'} size={15} color={notificationEnabled ? '#ffffff' : '#176b55'} />
+      </Pressable>
     </Pressable>
-  );
+    );
+  };
 
   const renderTodaySchedule = () => {
     const todayInfo = getTodayScheduleInfo(editablePlan, completedScheduleItems);
@@ -656,24 +838,33 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
           <Feather name="sun" size={22} color="#176b55" />
         </View>
 
-        {todayInfo.currentItem ? renderTodayItemCard(todayInfo.currentItem, '현재 진행 중', true) : (
+        {todayInfo.currentItem ? renderTodayItemCard(todayInfo.currentItem, '현재 진행 중', true, 'current', todayInfo.day) : (
           <View style={styles.todayInfoCard}>
             <Text style={styles.todayInfoText}>현재 진행 중인 일정이 없습니다</Text>
           </View>
         )}
 
-        {todayInfo.nextItem ? renderTodayItemCard(todayInfo.nextItem, '다음 일정', true) : (
+        {todayInfo.nextItem ? renderTodayItemCard(todayInfo.nextItem, '다음 일정', true, 'next', todayInfo.day) : (
           <View style={styles.todayInfoCard}>
             <Text style={styles.todayInfoText}>다음 일정이 없습니다</Text>
           </View>
         )}
 
         <View style={styles.remainingSection}>
+          <Text style={styles.remainingTitle}>지난 일정</Text>
+          {todayInfo.pastItems.length === 0 ? (
+            <Text style={styles.remainingEmpty}>지난 일정이 없습니다</Text>
+          ) : (
+            todayInfo.pastItems.map((item) => renderTodayItemCard(item, '지난 일정', false, 'past', todayInfo.day))
+          )}
+        </View>
+
+        <View style={styles.remainingSection}>
           <Text style={styles.remainingTitle}>남은 일정</Text>
           {todayInfo.remainingItems.length === 0 ? (
             <Text style={styles.remainingEmpty}>남은 일정이 없습니다</Text>
           ) : (
-            todayInfo.remainingItems.map((item) => renderTodayItemCard(item, '남은 일정'))
+            todayInfo.remainingItems.map((item) => renderTodayItemCard(item, '남은 일정', item.id === todayInfo.nextItem?.id, 'remaining', todayInfo.day))
           )}
         </View>
       </View>
@@ -863,6 +1054,8 @@ export default function ItineraryDetailScreen({ plan, onBack, onSave, onSyncPlan
           <Text style={styles.metaValue}>{editablePlan.style || '자유 여행'}</Text>
         </View>
       </View>
+
+      <WeatherCard weather={weatherState.data} loading={weatherState.loading} error={weatherState.error} />
 
       <View style={styles.tabBar}>
         <Pressable
@@ -1551,6 +1744,21 @@ const styles = StyleSheet.create({
   },
   todayItemCopy: {
     flex: 1,
+  },
+  notificationToggle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+    backgroundColor: '#eef8f3',
+    borderWidth: 1,
+    borderColor: '#cfe7dd',
+  },
+  activeNotificationToggle: {
+    backgroundColor: '#176b55',
+    borderColor: '#176b55',
   },
   todayItemLabel: {
     color: '#176b55',

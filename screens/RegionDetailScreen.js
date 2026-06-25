@@ -1,11 +1,37 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import InfoCard from '../components/InfoCard';
 import ScreenHeader from '../components/ScreenHeader';
+import WeatherCard from '../components/WeatherCard';
+import { getWeatherForTrip } from '../services/weatherService';
 
 export default function RegionDetailScreen({ destination, onBack, onCreateAIPlan }) {
+  const [weatherState, setWeatherState] = useState({ loading: true, data: null, error: null });
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadWeather = async () => {
+      setWeatherState({ loading: true, data: null, error: null });
+      const data = await getWeatherForTrip({ destination, date: new Date() });
+      if (mounted) {
+        setWeatherState({
+          loading: false,
+          data,
+          error: data.type === 'fallback' ? data.error : null,
+        });
+      }
+    };
+
+    loadWeather();
+
+    return () => {
+      mounted = false;
+    };
+  }, [destination]);
+
   return (
     <ScrollView style={styles.screen} showsVerticalScrollIndicator={false}>
       <ScreenHeader title={destination.name} subtitle={`${destination.country} · ${destination.tagline}`} onBack={onBack} />
@@ -28,17 +54,7 @@ export default function RegionDetailScreen({ destination, onBack, onCreateAIPlan
         </View>
       </ImageBackground>
 
-      <View style={styles.weatherCard}>
-        <View style={styles.weatherIcon}>
-          <Feather name="sun" size={24} color="#ffffff" />
-        </View>
-        <View style={styles.weatherCopy}>
-          <Text style={styles.weatherLabel}>오늘의 날씨</Text>
-          <Text style={styles.weatherMain}>{destination.weather}</Text>
-          <Text style={styles.weatherSub}>추천 시기: {destination.bestSeason}</Text>
-        </View>
-        <Text style={styles.temperature}>{destination.temperature}</Text>
-      </View>
+      <WeatherCard weather={weatherState.data} loading={weatherState.loading} error={weatherState.error} />
 
       <InfoCard title="추천 명소" icon="camera">
         {destination.spots.map((spot, index) => (

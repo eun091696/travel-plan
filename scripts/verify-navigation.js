@@ -185,6 +185,7 @@ async function waitForChecklistRowCountGreaterThan(page, count) {
   await page.waitForSelector('[data-testid^="map-pin-"]', { timeout: 15000 });
   await clickByTestId(page, 'detail-tab-today');
   await page.waitForSelector('[data-testid="today-schedule-panel"]', { timeout: 15000 });
+  await page.waitForSelector('[data-testid^="today-notification-toggle-"]', { timeout: 15000 });
   await clickFirstByPrefix(page, 'today-item-');
   await clickByTestId(page, 'detail-tab-schedule');
 

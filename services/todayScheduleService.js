@@ -25,6 +25,13 @@ function formatDuration(minutes) {
   return `${hours}시간 ${mins}분 후`;
 }
 
+function getItemEndMinutes(item, nextItem) {
+  if (item.minutes === null) return null;
+  const defaultEndMinutes = item.minutes + 120;
+  if (nextItem?.minutes === null || nextItem?.minutes === undefined) return defaultEndMinutes;
+  return Math.min(nextItem.minutes, defaultEndMinutes);
+}
+
 export function getTodayTripStatus(plan, now = new Date()) {
   const start = parseDate(plan.startDate);
   const end = parseDate(plan.endDate || plan.startDate);
@@ -60,12 +67,19 @@ export function getTodayScheduleInfo(plan, completedItems = {}, now = new Date()
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const sortedItems = [...items].sort((a, b) => (a.minutes ?? 9999) - (b.minutes ?? 9999));
+  const timedItems = sortedItems.filter((item) => item.minutes !== null);
   const currentItem =
-    [...sortedItems]
-      .reverse()
-      .find((item) => item.minutes !== null && item.minutes <= currentMinutes && !item.completed) || null;
-  const nextItem = sortedItems.find((item) => item.minutes !== null && item.minutes > currentMinutes && !item.completed) || null;
-  const remainingItems = sortedItems.filter((item) => !item.completed && item.id !== currentItem?.id && item.id !== nextItem?.id);
+    timedItems.find((item, index) => {
+      const endMinutes = getItemEndMinutes(item, timedItems[index + 1]);
+      return item.minutes <= currentMinutes && currentMinutes < endMinutes;
+    }) || null;
+  const nextItem = timedItems.find((item) => item.minutes > currentMinutes) || null;
+  const pastItems = sortedItems.filter((item) => {
+    if (item.minutes === null) return false;
+    if (item.id === currentItem?.id) return false;
+    return item.minutes < currentMinutes;
+  });
+  const remainingItems = sortedItems.filter((item) => item.minutes === null || item.minutes > currentMinutes);
   const minutesToNext = nextItem?.minutes !== null && nextItem ? nextItem.minutes - currentMinutes : null;
 
   return {
@@ -74,6 +88,7 @@ export function getTodayScheduleInfo(plan, completedItems = {}, now = new Date()
     items: sortedItems,
     currentItem,
     nextItem,
+    pastItems,
     remainingItems,
     minutesToNext,
     nextTimeLabel: minutesToNext === null ? '다음 일정이 없습니다' : formatDuration(minutesToNext),
