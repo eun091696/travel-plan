@@ -65,7 +65,7 @@ export default function RegionDetailScreen({ destination, onBack, onCreateAIPlan
         accessibilityLabel="AI 일정 만들기"
         testID="create-ai-plan-button"
         style={styles.aiButton}
-        onPress={onCreateAIPlan}
+        onPress={() => onCreateAIPlan(destination)}
       >
         <Feather name="star" size={19} color="#ffffff" />
         <Text style={styles.aiButtonText}>AI 일정 만들기</Text>

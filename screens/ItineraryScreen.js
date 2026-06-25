@@ -1,13 +1,30 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import ScreenHeader from '../components/ScreenHeader';
 
-export default function ItineraryScreen({ plans }) {
+function formatSavedDate(value) {
+  if (!value) return '생성일 미정';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '생성일 미정';
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}.${month}.${day}`;
+}
+
+function getDateRange(plan) {
+  if (plan.startDate && plan.endDate) return `${plan.startDate} - ${plan.endDate}`;
+  if (plan.duration) return plan.duration;
+  return '여행 날짜 미정';
+}
+
+export default function ItineraryScreen({ plans, onSelectPlan }) {
   return (
     <ScrollView style={styles.screen} showsVerticalScrollIndicator={false}>
-      <ScreenHeader title="내 일정" subtitle="저장된 여행 일정을 카드로 확인하세요." icon="calendar" />
+      <ScreenHeader title="내 일정" subtitle="저장된 여행 일정을 한눈에 관리하세요." icon="calendar" />
 
       <View style={styles.list}>
         {plans.length === 0 ? (
@@ -20,72 +37,53 @@ export default function ItineraryScreen({ plans }) {
           </View>
         ) : (
           plans.map((plan) => (
-            <View key={plan.id} testID={`itinerary-card-${plan.id}`} style={styles.planCard}>
+            <Pressable
+              key={plan.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${plan.destination} 일정 상세 보기`}
+              testID={`saved-plan-card-${plan.id}`}
+              style={styles.planCard}
+              onPress={() => onSelectPlan(plan.id)}
+            >
               <View style={styles.planHeader}>
                 <View style={styles.planIcon}>
                   <Feather name="map-pin" size={20} color="#176b55" />
                 </View>
                 <View style={styles.planTitleBlock}>
                   <Text style={styles.destination}>{plan.destination}</Text>
-                  <Text style={styles.country}>{plan.country}</Text>
+                  <Text style={styles.country}>{plan.country || '여행지'}</Text>
                 </View>
-                <View style={styles.durationPill}>
-                  <Text style={styles.durationText}>{plan.duration || '미정'}</Text>
-                </View>
+                <Feather name="chevron-right" size={22} color="#9aaba4" />
               </View>
 
-              <Text style={styles.summary}>{plan.summary}</Text>
-
-              <View style={styles.metaGrid}>
-                <View style={styles.metaItem}>
-                  <Feather name="credit-card" size={15} color="#176b55" />
-                  <Text style={styles.metaLabel}>예산</Text>
-                  <Text style={styles.metaValue}>{plan.budget || '미정'}</Text>
+              <View style={styles.metaList}>
+                <View style={styles.metaRow}>
+                  <Feather name="calendar" size={15} color="#176b55" />
+                  <Text style={styles.metaLabel}>여행 날짜</Text>
+                  <Text style={styles.metaValue}>{getDateRange(plan)}</Text>
                 </View>
-                <View style={styles.metaItem}>
+                <View style={styles.metaRow}>
                   <Feather name="users" size={15} color="#176b55" />
-                  <Text style={styles.metaLabel}>동행</Text>
+                  <Text style={styles.metaLabel}>동행인</Text>
                   <Text style={styles.metaValue}>{plan.companions || '미정'}</Text>
                 </View>
-                <View style={styles.metaItem}>
+                <View style={styles.metaRow}>
                   <Feather name="sliders" size={15} color="#176b55" />
-                  <Text style={styles.metaLabel}>스타일</Text>
+                  <Text style={styles.metaLabel}>여행 스타일</Text>
                   <Text style={styles.metaValue}>{plan.style || '자유 여행'}</Text>
+                </View>
+                <View style={styles.metaRow}>
+                  <Feather name="clock" size={15} color="#176b55" />
+                  <Text style={styles.metaLabel}>생성일</Text>
+                  <Text style={styles.metaValue}>{formatSavedDate(plan.savedAt)}</Text>
                 </View>
               </View>
 
-              <View style={styles.dayList}>
-                {(plan.days || []).map((day) => (
-                  <View key={`${plan.id}-${day.day}`} testID={`day-${day.day}`} style={styles.dayCard}>
-                    <View style={styles.dayHeader}>
-                      <View style={styles.dayBadge}>
-                        <Text style={styles.dayBadgeText}>{day.day}</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.dayTitle}>Day {day.day}</Text>
-                        <Text style={styles.daySubtitle}>{day.title}</Text>
-                      </View>
-                    </View>
-
-                    {day.items.map((item) => (
-                      <View key={`${day.day}-${item.time}-${item.placeName}`} style={styles.timelineRow}>
-                        <View style={styles.timeColumn}>
-                          <Text style={styles.timeText}>{item.time}</Text>
-                          <View style={styles.timelineDot} />
-                        </View>
-                        <View style={styles.itemIcon}>
-                          <Feather name={item.icon || 'map-pin'} size={16} color="#176b55" />
-                        </View>
-                        <View style={styles.timelineContent}>
-                          <Text style={styles.activity}>{item.placeName}</Text>
-                          <Text style={styles.note}>{item.description}</Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                ))}
+              <View style={styles.cardFooter}>
+                <Text style={styles.footerText}>Day {(plan.days || []).length} 일정</Text>
+                <Text style={styles.footerAction}>상세 보기</Text>
               </View>
-            </View>
+            </Pressable>
           ))
         )}
       </View>
@@ -146,12 +144,12 @@ const styles = StyleSheet.create({
   },
   planHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   planIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -172,137 +170,51 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  durationPill: {
-    minWidth: 74,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#e4f4ee',
-  },
-  durationText: {
-    color: '#176b55',
-    fontSize: 12,
-    textAlign: 'center',
-    fontWeight: '800',
-  },
-  summary: {
-    marginTop: 14,
-    color: '#344943',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  metaGrid: {
+  metaList: {
     marginTop: 16,
-    flexDirection: 'row',
     gap: 8,
   },
-  metaItem: {
-    flex: 1,
-    minHeight: 72,
-    padding: 10,
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 38,
+    paddingHorizontal: 12,
     borderRadius: 8,
     backgroundColor: '#f7fbf9',
     borderWidth: 1,
     borderColor: '#e4eee9',
   },
   metaLabel: {
-    marginTop: 6,
+    width: 82,
+    marginLeft: 8,
     color: '#7a8c85',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  metaValue: {
-    marginTop: 4,
-    color: '#21342f',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  dayList: {
-    marginTop: 18,
-  },
-  dayCard: {
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 8,
-    backgroundColor: '#f7fbf9',
-    borderWidth: 1,
-    borderColor: '#e0ebe6',
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  dayBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    backgroundColor: '#176b55',
-  },
-  dayBadgeText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  dayTitle: {
-    color: '#176b55',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  daySubtitle: {
-    marginTop: 3,
-    color: '#40544d',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  timelineRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 10,
-  },
-  timeColumn: {
-    width: 54,
-    alignItems: 'center',
-  },
-  timeText: {
-    color: '#71827b',
     fontSize: 12,
     fontWeight: '800',
   },
-  timelineDot: {
-    width: 8,
-    height: 8,
-    marginTop: 8,
-    borderRadius: 4,
-    backgroundColor: '#ff8a5b',
-  },
-  itemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    backgroundColor: '#e8f6f0',
-  },
-  timelineContent: {
+  metaValue: {
     flex: 1,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e4ece8',
-  },
-  activity: {
-    color: '#14231f',
-    fontSize: 15,
+    color: '#21342f',
+    fontSize: 13,
     fontWeight: '800',
+    textAlign: 'right',
   },
-  note: {
-    marginTop: 4,
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#eef4f1',
+  },
+  footerText: {
     color: '#61736c',
     fontSize: 13,
-    lineHeight: 19,
+    fontWeight: '800',
+  },
+  footerAction: {
+    color: '#176b55',
+    fontSize: 13,
+    fontWeight: '900',
   },
 });

@@ -118,7 +118,8 @@ export default function AIPlanScreen({ destination, onBack, onSubmit }) {
           <Feather name="calendar" size={20} color="#176b55" />
         </View>
         <View style={styles.guideCopy}>
-          <Text style={styles.guideTitle}>{destination.name} 맞춤 일정</Text>
+          <Text testID="ai-plan-destination-name" style={styles.guideTitle}>{destination.name} 맞춤 일정</Text>
+          <Text style={styles.regionMeta}>{destination.country} · {destination.weather} · {destination.temperature}</Text>
           <Text style={styles.guideText}>년, 월, 일을 선택하고 도착/출발 시간을 일정에 반영하세요.</Text>
         </View>
       </View>
@@ -257,6 +258,12 @@ const styles = StyleSheet.create({
   guideTitle: {
     color: '#14231f',
     fontSize: 16,
+    fontWeight: '800',
+  },
+  regionMeta: {
+    marginTop: 4,
+    color: '#176b55',
+    fontSize: 12,
     fontWeight: '800',
   },
   guideText: {

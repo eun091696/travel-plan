@@ -53,6 +53,18 @@ function subtractTwoHours(time) {
   return formatTime(parsed - 120);
 }
 
+function getWeatherLabel(region) {
+  if (typeof region.weather === 'string') {
+    return [region.weather, region.temperature].filter(Boolean).join(' ');
+  }
+
+  if (region.weather) {
+    return [region.weather.status, region.weather.temperature].filter(Boolean).join(' ');
+  }
+
+  return '';
+}
+
 function getStyleKey(style = '') {
   const normalized = style.toLowerCase().replace(/\s+/g, '');
   if (normalized.includes('맛집') || normalized.includes('미식') || normalized.includes('food')) return 'food';
@@ -65,7 +77,10 @@ function getStyleKey(style = '') {
 function getPlacesForStyle(region, style) {
   const styleKey = getStyleKey(style);
   const recommendations = region.styleRecommendations || {};
-  return recommendations[styleKey] || recommendations.default || region.attractions || region.spots || [];
+
+  if (recommendations[styleKey]) return recommendations[styleKey];
+  if (styleKey === 'food' && region.restaurants) return region.restaurants;
+  return recommendations.default || region.attractions || region.spots || [];
 }
 
 function getIconForStyle(style, index) {
@@ -77,45 +92,48 @@ function getIconForStyle(style, index) {
     couple: ['heart', 'coffee', 'star', 'moon'],
     default: ['camera', 'coffee', 'map-pin', 'star'],
   };
-
-  return (icons[styleKey] || icons.default)[index % (icons[styleKey] || icons.default).length];
+  const pickedIcons = icons[styleKey] || icons.default;
+  return pickedIcons[index % pickedIcons.length];
 }
 
-function getDescription(style, companions, budget, index) {
+function getDescription(style, companions, budget, index, weatherLabel) {
   const styleKey = getStyleKey(style);
+  const weatherPrefix = weatherLabel ? `${weatherLabel} 날씨에 맞춘 ` : '';
   const descriptions = {
     food: [
-      `${budget} 예산에 맞춰 현지 맛을 즐기는 코스`,
-      `${companions}와 함께 쉬어가기 좋은 카페와 디저트 일정`,
-      '저녁 분위기를 살리는 야시장 또는 로컬 맛집 일정',
+      `${weatherPrefix}${budget} 예산에 맞춘 지역 맛집 코스`,
+      `${companions}와 함께 가기 좋은 카페와 로컬 음식 일정`,
+      '대표 분위기를 느끼며 즐기는 로컬 미식 일정',
     ],
     healing: [
-      '천천히 걷고 쉬어가는 힐링 중심 코스',
-      `${companions}와 함께 여유롭게 머무는 산책 일정`,
-      '컨디션 회복을 고려한 부담 없는 자연 코스',
+      `${weatherPrefix}천천히 걷고 쉬어가는 힐링 코스`,
+      `${companions}와 여유롭게 머무는 산책 일정`,
+      '컨디션과 이동 동선을 고려한 자연 중심 코스',
     ],
     activity: [
-      '직접 체험하고 움직이는 액티비티 중심 코스',
+      `${weatherPrefix}직접 체험하고 움직이는 액티비티 코스`,
       '이동 시간을 고려한 반나절 투어 일정',
-      `${companions}와 함께 즐기기 좋은 야외활동`,
+      `${companions}와 함께 즐기기 좋은 야외 활동`,
     ],
     couple: [
-      '사진을 남기기 좋은 커플 여행 코스',
+      `${weatherPrefix}사진 남기기 좋은 커플 여행 코스`,
       '감성 카페와 전망을 함께 즐기는 일정',
       '하루를 마무리하기 좋은 야경 중심 코스',
     ],
     default: [
       `${companions}와 함께 둘러보기 좋은 대표 코스`,
-      `${budget} 예산을 고려한 균형 잡힌 일정`,
-      '이동 부담을 줄인 핵심 여행 코스',
+      `${budget} 예산을 고려한 균형 잡힌 여행 일정`,
+      `${weatherPrefix}이동 부담을 줄인 핵심 여행 코스`,
     ],
   };
 
-  return (descriptions[styleKey] || descriptions.default)[index % (descriptions[styleKey] || descriptions.default).length];
+  const pickedDescriptions = descriptions[styleKey] || descriptions.default;
+  return pickedDescriptions[index % pickedDescriptions.length];
 }
 
 function buildDayItems({ region, dateIndex, isFirstDay, isLastDay, form, style, budget, companions, airportArrivalTime }) {
   const places = getPlacesForStyle(region, style);
+  const weatherLabel = getWeatherLabel(region);
   const arrivalMinutes = parseTime(form.arrivalTime);
   const airportMinutes = parseTime(airportArrivalTime);
   const startTime = isFirstDay && arrivalMinutes !== null ? formatTime(arrivalMinutes + 90) : '10:00';
@@ -140,7 +158,7 @@ function buildDayItems({ region, dateIndex, isFirstDay, isLastDay, form, style, 
     items.push({
       time,
       placeName,
-      description: getDescription(style, companions, budget, index),
+      description: getDescription(style, companions, budget, index, weatherLabel),
       icon: getIconForStyle(style, index),
     });
   });
@@ -165,6 +183,7 @@ export function generateItinerary(region, form) {
   const style = form.style || '자유 여행';
   const duration = `${formatDateLabel(tripDates[0])} - ${formatDateLabel(tripDates[tripDates.length - 1])} · ${tripDates.length}일`;
   const airportArrivalTime = subtractTwoHours(form.departureTime);
+  const weatherLabel = getWeatherLabel(region);
 
   const days = tripDates.map((date, index) => ({
     day: index + 1,
@@ -185,8 +204,13 @@ export function generateItinerary(region, form) {
 
   return {
     id: `plan-${Date.now()}`,
+    destinationId: region.id,
     destination: region.name,
+    destinationEnglishName: region.englishName,
+    destinationImage: region.image,
     country: region.country,
+    weather: region.weather,
+    weatherLabel,
     duration,
     startDate: form.startDate,
     endDate: form.endDate,
@@ -195,7 +219,7 @@ export function generateItinerary(region, form) {
     budget,
     companions,
     style,
-    summary: `${duration} 동안 ${region.name}을 ${style} 스타일로 즐기는 mock 일정`,
+    summary: `${duration} 동안 ${region.name}을 ${style} 스타일로 즐기는 mock 일정${weatherLabel ? ` · ${weatherLabel}` : ''}`,
     days,
     savedAt: null,
   };
