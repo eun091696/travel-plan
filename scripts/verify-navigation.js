@@ -120,6 +120,11 @@ async function waitForChecklistRowCountGreaterThan(page, count) {
   await page.reload({ waitUntil: 'networkidle2' });
 
   await waitForText(page, 'Travel Plan');
+  const guestLoginButton = await page.$('[data-testid="guest-login-button"]');
+  if (guestLoginButton) {
+    await clickByTestId(page, 'guest-login-button');
+    await page.waitForSelector('[data-testid="region-search-input"]', { timeout: 15000 });
+  }
 
   await typeByTestId(page, 'region-search-input', '도쿄');
   await page.waitForSelector('[data-testid="search-result-tokyo"]', { timeout: 15000 });

@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import ScreenHeader from '../components/ScreenHeader';
 
@@ -10,7 +10,9 @@ const menuItems = [
   { label: '앱 설정', icon: 'settings' },
 ];
 
-export default function MyPageScreen() {
+export default function MyPageScreen({ user, onLogout, serverConnection }) {
+  const isServerMode = serverConnection?.storageMode === 'server';
+
   return (
     <View style={styles.screen}>
       <ScreenHeader title="마이페이지" subtitle="저장한 여행과 계정 정보를 관리할 수 있습니다." icon="user" />
@@ -20,8 +22,34 @@ export default function MyPageScreen() {
           <Text style={styles.avatarText}>TP</Text>
         </View>
         <View style={styles.profileCopy}>
-          <Text style={styles.name}>Travel Planner</Text>
-          <Text style={styles.email}>mock-user@travelplan.app</Text>
+          <Text style={styles.name}>{user?.name || '게스트 여행자'}</Text>
+          <Text style={styles.email}>{user?.email || 'mock login'}</Text>
+          <Text style={styles.userId}>userId: {user?.userId || '로그인 정보 없음'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.statusCard}>
+        <View style={styles.statusIcon}>
+          <Feather name="check-circle" size={18} color="#176b55" />
+        </View>
+        <View style={styles.statusCopy}>
+          <Text style={styles.statusTitle}>mock 로그인 사용 중</Text>
+          <Text style={styles.statusText}>현재 계정은 로컬 AsyncStorage에 저장된 임시 게스트 계정입니다.</Text>
+        </View>
+      </View>
+
+      <View testID="storage-mode-card" style={styles.storageCard}>
+        <View style={[styles.storageIcon, isServerMode ? styles.serverIcon : styles.localIcon]}>
+          <Feather name={isServerMode ? 'cloud' : 'hard-drive'} size={18} color={isServerMode ? '#176b55' : '#b26a2c'} />
+        </View>
+        <View style={styles.statusCopy}>
+          <Text style={styles.statusTitle}>현재 저장 모드</Text>
+          <Text testID="storage-mode-label" style={[styles.storageModeText, isServerMode ? styles.serverModeText : styles.localModeText]}>
+            {isServerMode ? '서버 모드' : '로컬 모드'}
+          </Text>
+          <Text style={styles.statusText}>
+            {serverConnection?.message || '서버 연결 상태를 확인하고 있습니다'}
+          </Text>
         </View>
       </View>
 
@@ -36,6 +64,11 @@ export default function MyPageScreen() {
           </View>
         ))}
       </View>
+
+      <Pressable testID="logout-button" style={styles.logoutButton} onPress={onLogout}>
+        <Feather name="log-out" size={18} color="#d45555" />
+        <Text style={styles.logoutButtonText}>로그아웃</Text>
+      </Pressable>
     </View>
   );
 }
@@ -87,6 +120,82 @@ const styles = StyleSheet.create({
     color: '#71827b',
     fontSize: 13,
   },
+  userId: {
+    marginTop: 5,
+    color: '#176b55',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e1ece7',
+  },
+  storageCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e1ece7',
+  },
+  storageIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  serverIcon: {
+    backgroundColor: '#e8f6f0',
+  },
+  localIcon: {
+    backgroundColor: '#fff3e8',
+  },
+  storageModeText: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  serverModeText: {
+    color: '#176b55',
+  },
+  localModeText: {
+    color: '#b26a2c',
+  },
+  statusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    backgroundColor: '#e8f6f0',
+  },
+  statusCopy: {
+    flex: 1,
+  },
+  statusTitle: {
+    color: '#14231f',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  statusText: {
+    marginTop: 4,
+    color: '#61736c',
+    fontSize: 13,
+    lineHeight: 19,
+  },
   menuCard: {
     marginHorizontal: 20,
     marginTop: 14,
@@ -118,5 +227,23 @@ const styles = StyleSheet.create({
     color: '#243732',
     fontSize: 15,
     fontWeight: '800',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
+    marginHorizontal: 20,
+    marginTop: 14,
+    borderRadius: 8,
+    backgroundColor: '#fff7f7',
+    borderWidth: 1,
+    borderColor: '#f2cece',
+    gap: 8,
+  },
+  logoutButtonText: {
+    color: '#d45555',
+    fontSize: 15,
+    fontWeight: '900',
   },
 });

@@ -21,13 +21,25 @@ function getDateRange(plan) {
   return '여행 날짜 미정';
 }
 
-export default function ItineraryScreen({ plans, onSelectPlan }) {
+export default function ItineraryScreen({ plans, onSelectPlan, isLoading = false, error = '' }) {
   return (
     <ScrollView style={styles.screen} showsVerticalScrollIndicator={false}>
       <ScreenHeader title="내 일정" subtitle="저장된 여행 일정을 한눈에 관리하세요." icon="calendar" />
 
       <View style={styles.list}>
-        {plans.length === 0 ? (
+        {isLoading ? (
+          <View testID="itinerary-loading" style={styles.stateCard}>
+            <Feather name="loader" size={24} color="#176b55" />
+            <Text style={styles.stateTitle}>일정을 불러오는 중입니다</Text>
+            <Text style={styles.stateText}>백엔드 API 또는 로컬 저장 데이터를 확인하고 있어요.</Text>
+          </View>
+        ) : error ? (
+          <View testID="itinerary-error" style={styles.stateCard}>
+            <Feather name="alert-circle" size={24} color="#d45555" />
+            <Text style={styles.stateTitle}>일정을 불러오지 못했습니다</Text>
+            <Text style={styles.stateText}>{error}</Text>
+          </View>
+        ) : plans.length === 0 ? (
           <View testID="empty-itinerary" style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <Feather name="map" size={24} color="#176b55" />
@@ -123,6 +135,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   emptyText: {
+    marginTop: 8,
+    color: '#61736c',
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+  },
+  stateCard: {
+    alignItems: 'center',
+    padding: 24,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e1ece7',
+  },
+  stateTitle: {
+    marginTop: 12,
+    color: '#14231f',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  stateText: {
     marginTop: 8,
     color: '#61736c',
     fontSize: 14,

@@ -52,7 +52,7 @@ function getMonthCells(year, monthIndex) {
   return cells;
 }
 
-export default function AIPlanScreen({ destination, onBack, onSubmit }) {
+export default function AIPlanScreen({ destination, onBack, onSubmit, isLoading = false, error = '' }) {
   const today = useMemo(() => {
     const value = new Date();
     value.setHours(0, 0, 0, 0);
@@ -217,12 +217,19 @@ export default function AIPlanScreen({ destination, onBack, onSubmit }) {
         accessibilityRole="button"
         accessibilityLabel="일정 생성"
         testID="generate-itinerary-button"
-        style={styles.submitButton}
+        disabled={isLoading}
+        style={[styles.submitButton, isLoading && styles.disabledSubmitButton]}
         onPress={() => onSubmit(form)}
       >
-        <Feather name="send" size={19} color="#ffffff" />
-        <Text style={styles.submitButtonText}>일정 생성</Text>
+        <Feather name={isLoading ? 'loader' : 'send'} size={19} color="#ffffff" />
+        <Text style={styles.submitButtonText}>{isLoading ? 'AI 일정 생성 중' : '일정 생성'}</Text>
       </Pressable>
+      {error ? (
+        <View style={styles.errorCard}>
+          <Feather name="alert-circle" size={17} color="#d45555" />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -444,10 +451,32 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 5,
   },
+  disabledSubmitButton: {
+    opacity: 0.68,
+  },
   submitButtonText: {
     marginLeft: 8,
     color: '#ffffff',
     fontSize: 16,
+    fontWeight: '800',
+  },
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 18,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#fff1f0',
+    borderWidth: 1,
+    borderColor: '#ffd7d3',
+  },
+  errorText: {
+    flex: 1,
+    marginLeft: 8,
+    color: '#d45555',
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '800',
   },
 });

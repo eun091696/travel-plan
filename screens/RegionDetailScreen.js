@@ -5,27 +5,41 @@ import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from '
 import InfoCard from '../components/InfoCard';
 import ScreenHeader from '../components/ScreenHeader';
 import WeatherCard from '../components/WeatherCard';
+import { getRegionPlaceGroups } from '../services/placeService';
 import { getWeatherForTrip } from '../services/weatherService';
 
 export default function RegionDetailScreen({ destination, onBack, onCreateAIPlan }) {
   const [weatherState, setWeatherState] = useState({ loading: true, data: null, error: null });
+  const [placeState, setPlaceState] = useState({ loading: true, attractions: [], restaurants: [], error: null });
 
   useEffect(() => {
     let mounted = true;
 
-    const loadWeather = async () => {
+    const loadScreenData = async () => {
       setWeatherState({ loading: true, data: null, error: null });
-      const data = await getWeatherForTrip({ destination, date: new Date() });
+      setPlaceState({ loading: true, attractions: [], restaurants: [], error: null });
+
+      const [weatherData, placeData] = await Promise.all([
+        getWeatherForTrip({ destination, date: new Date() }),
+        getRegionPlaceGroups({ destination, limit: 5 }),
+      ]);
+
       if (mounted) {
         setWeatherState({
           loading: false,
-          data,
-          error: data.type === 'fallback' ? data.error : null,
+          data: weatherData,
+          error: weatherData.type === 'fallback' ? weatherData.error : null,
+        });
+        setPlaceState({
+          loading: false,
+          attractions: placeData.attractions,
+          restaurants: placeData.restaurants,
+          error: placeData.error,
         });
       }
     };
 
-    loadWeather();
+    loadScreenData();
 
     return () => {
       mounted = false;
@@ -56,22 +70,34 @@ export default function RegionDetailScreen({ destination, onBack, onCreateAIPlan
 
       <WeatherCard weather={weatherState.data} loading={weatherState.loading} error={weatherState.error} />
 
-      <InfoCard title="추천 명소" icon="camera">
-        {destination.spots.map((spot, index) => (
-          <View key={spot} style={styles.listRow}>
+      <InfoCard title="추천 관광지 TOP 5" icon="camera">
+        {placeState.loading ? <Text style={styles.stateText}>장소 정보를 불러오는 중입니다</Text> : null}
+        {placeState.error ? <Text style={styles.errorText}>{placeState.error}</Text> : null}
+        {!placeState.loading && placeState.attractions.map((place, index) => (
+          <View key={place.id} style={styles.placeRow}>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{index + 1}</Text>
             </View>
-            <Text style={styles.listText}>{spot}</Text>
+            <View style={styles.placeCopy}>
+              <Text style={styles.placeName}>{place.name}</Text>
+              <Text style={styles.placeMeta}>{place.category} · 평점 {place.rating} · {place.address}</Text>
+              <Text style={styles.placeDescription}>{place.description}</Text>
+            </View>
           </View>
         ))}
       </InfoCard>
 
-      <InfoCard title="맛집 리스트" icon="coffee">
-        {destination.restaurants.map((restaurant) => (
-          <View key={restaurant} style={styles.restaurantRow}>
+      <InfoCard title="맛집 TOP 5" icon="coffee">
+        {placeState.loading ? <Text style={styles.stateText}>맛집 정보를 불러오는 중입니다</Text> : null}
+        {placeState.error ? <Text style={styles.errorText}>{placeState.error}</Text> : null}
+        {!placeState.loading && placeState.restaurants.map((place) => (
+          <View key={place.id} style={styles.restaurantRow}>
             <MaterialCommunityIcons name="silverware-fork-knife" size={17} color="#ff8a5b" />
-            <Text style={styles.listText}>{restaurant}</Text>
+            <View style={styles.placeCopy}>
+              <Text style={styles.placeName}>{place.name}</Text>
+              <Text style={styles.placeMeta}>{place.category} · 평점 {place.rating} · {place.address}</Text>
+              <Text style={styles.placeDescription}>{place.description}</Text>
+            </View>
           </View>
         ))}
       </InfoCard>
@@ -228,10 +254,51 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '700',
   },
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 13,
+  },
+  placeCopy: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  placeName: {
+    color: '#263833',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '900',
+  },
+  placeMeta: {
+    marginTop: 3,
+    color: '#61736c',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  placeDescription: {
+    marginTop: 4,
+    color: '#52655e',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  stateText: {
+    color: '#61736c',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  errorText: {
+    marginBottom: 10,
+    color: '#d45555',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
   restaurantRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 11,
+    alignItems: 'flex-start',
+    marginBottom: 13,
   },
   aiButton: {
     flexDirection: 'row',

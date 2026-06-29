@@ -24,7 +24,15 @@ function getFriendlyWeatherError(error) {
   if (!error) return null;
   if (String(error).includes('OPENWEATHER_API_KEY')) return 'OpenWeather API 키를 설정해주세요';
   if (String(error).includes('API 키')) return 'OpenWeather API 키를 설정해주세요';
-  return error;
+  return '날씨 정보를 불러오지 못해 임시 데이터를 표시합니다';
+}
+
+function logWeatherError(message, details = {}) {
+  console.log('[weatherService]', message, details);
+}
+
+function maskApiKeyInUrl(url) {
+  return String(url).replace(/appid=([^&]+)/, 'appid=<hidden>');
 }
 
 function startOfDay(date) {
@@ -55,7 +63,7 @@ function getFallbackWeather(destination, error = null) {
     status: status || '날씨 정보 준비 중',
     temperature: temperature || '',
     humidity: weather?.humidity,
-    notice: friendlyError || '실제 날씨 API 호출에 실패해 기존 mock 날씨를 표시합니다.',
+    notice: friendlyError || '날씨 정보를 불러오지 못해 임시 데이터를 표시합니다',
     error: friendlyError,
   };
 }
@@ -83,8 +91,31 @@ async function resolveCoordinates({ destination, coordinates, apiKey }) {
   const query = getDestinationQuery(destination);
   if (!query) throw new Error('날씨 조회를 위한 지역명이 없습니다.');
 
-  const response = await fetch(`${OPEN_WEATHER_GEO_URL}?q=${encodeURIComponent(query)}&limit=1&appid=${apiKey}`);
-  if (!response.ok) throw new Error('OpenWeatherMap 지오코딩 조회에 실패했습니다.');
+  const url = `${OPEN_WEATHER_GEO_URL}?q=${encodeURIComponent(query)}&limit=1&appid=${apiKey}`;
+  let response;
+
+  try {
+    logWeatherError('OpenWeatherMap geocoding request', { url: maskApiKeyInUrl(url) });
+    response = await fetch(url);
+  } catch (error) {
+    logWeatherError('OpenWeatherMap geocoding network error', {
+      message: error?.message,
+      name: error?.name,
+      url: maskApiKeyInUrl(url),
+    });
+    throw new Error(`OpenWeatherMap 지오코딩 네트워크 오류: ${error?.message || '알 수 없는 오류'}`);
+  }
+
+  if (!response.ok) {
+    const body = await response.text();
+    logWeatherError('OpenWeatherMap geocoding response error', {
+      status: response.status,
+      statusText: response.statusText,
+      body,
+      url: maskApiKeyInUrl(url),
+    });
+    throw new Error(`OpenWeatherMap 지오코딩 조회 실패: ${response.status}`);
+  }
 
   const data = await response.json();
   if (!data?.[0]) throw new Error('지역 좌표를 찾을 수 없습니다.');
@@ -135,14 +166,36 @@ function mapForecastResponse(data, travelDate) {
 
 async function fetchOpenWeatherForecast({ destination, coordinates, date }) {
   const apiKey = getApiKey();
-  if (isMissingApiKey(apiKey)) throw new Error('OpenWeather API 키를 설정해주세요.');
+  if (isMissingApiKey(apiKey)) {
+    logWeatherError('OpenWeatherMap request skipped because API key is missing or placeholder.');
+    throw new Error('OpenWeather API 키를 설정해주세요.');
+  }
 
   const resolvedCoordinates = await resolveCoordinates({ destination, coordinates, apiKey });
   const url = `${OPEN_WEATHER_BASE_URL}/forecast?lat=${resolvedCoordinates.latitude}&lon=${resolvedCoordinates.longitude}&units=metric&lang=kr&appid=${apiKey}`;
-  const response = await fetch(url);
+  let response;
+
+  try {
+    logWeatherError('OpenWeatherMap forecast request', { url: maskApiKeyInUrl(url) });
+    response = await fetch(url);
+  } catch (error) {
+    logWeatherError('OpenWeatherMap forecast network error', {
+      message: error?.message,
+      name: error?.name,
+      url: maskApiKeyInUrl(url),
+    });
+    throw new Error(`OpenWeatherMap 예보 네트워크 오류: ${error?.message || '알 수 없는 오류'}`);
+  }
 
   if (!response.ok) {
-    throw new Error('OpenWeatherMap 예보 조회에 실패했습니다.');
+    const body = await response.text();
+    logWeatherError('OpenWeatherMap forecast response error', {
+      status: response.status,
+      statusText: response.statusText,
+      body,
+      url: maskApiKeyInUrl(url),
+    });
+    throw new Error(`OpenWeatherMap 예보 조회 실패: ${response.status}`);
   }
 
   const data = await response.json();
@@ -157,6 +210,11 @@ export async function getWeatherForTrip({ destination, date, coordinates }) {
     try {
       return await fetchOpenWeatherForecast({ destination, coordinates, date: travelDate });
     } catch (error) {
+      logWeatherError('Weather fallback activated', {
+        message: error?.message,
+        destination: getDestinationQuery(destination),
+        date: travelDate.toISOString(),
+      });
       return getFallbackWeather(destination, error.message);
     }
   }

@@ -1,0 +1,11 @@
+server:
+  port: 8080
+
+spring:
+  profiles:
+    default: local
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
